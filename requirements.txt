@@ -1,0 +1,10 @@
+# Save this as requirements.txt
+streamlit
+pandas
+plotly
+matplotlib
+seaborn
+xgboost
+scikit-learn
+numpy
+openpyxl
