@@ -7,18 +7,16 @@ import time
 st.set_page_config(page_title="Warehouse Worker Assignment Tool", layout="wide")
 st.title("Warehouse Worker Assignment Optimizer")
 
-# Cache the model so it's loaded only once per session - improved with TTL
-@st.cache_resource(ttl=3600)
+# Cache the model so it's loaded only once per session
+@st.cache_resource
 def get_model():
     return load_model()
 
-# Cache the data to avoid reloading it unnecessarily - improved with TTL
-@st.cache_data(ttl=3600)
+# Cache the data to avoid reloading it unnecessarily
+@st.cache_data
 def get_data():
-    start = time.time()
     df = load_data()
     df, features, targets = preprocess_data(df)
-    print(f"Data loading and preprocessing took {time.time() - start:.2f} seconds")
     return df
 
 # Load model and data
@@ -32,9 +30,10 @@ with cols[0]:
 with cols[1]:
     humidity = st.slider("Humidity (%)", min_value=20.0, max_value=90.0, value=50.0, step=1.0)
 
-# Warn if temperature is outside training range
-if temp < df["Temperature"].min() or temp > df["Temperature"].max():
-    st.warning("⚠️ Temperature is outside the training range. Predictions may be inaccurate.")
+# Only check temperature range if the column exists
+if "Temperature" in df.columns:
+    if temp < df["Temperature"].min() or temp > df["Temperature"].max():
+        st.warning("⚠️ Temperature is outside the training range. Predictions may be inaccurate.")
 
 # Zone Filter Section
 st.subheader("Zone Filter")
@@ -49,7 +48,7 @@ for i in range(num_zones):
 zone_df = pd.DataFrame(zone_data)
 
 # Cache the optimization function to avoid rerunning with the same inputs
-@st.cache_data(ttl=600)
+@st.cache_data
 def cached_optimization(zone_df_json, temp_val, humidity_val):
     zone_df_local = pd.read_json(zone_df_json)
     return assign_workers_to_regions(zone_df_local, df, temp_val, humidity_val)
@@ -73,7 +72,7 @@ if st.button("Run Optimization", type="primary"):
         # Show success message with timing
         status.success(f"Optimization completed in {opt_time:.2f} seconds")
         
-        # Process the result dataframe (same as original)
+        # Process the result dataframe
         formatted_results = [
             {
                 "Zone": f"Zone {row['Zone']}",
