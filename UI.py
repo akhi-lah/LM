@@ -41,80 +41,89 @@ zone_df = pd.DataFrame(zone_data)
 
 if st.button("Run Optimization", type="primary"):
     with st.spinner("Processing..."):
-        # Use cached data instead of reloading
-        result_df = assign_workers_to_regions(zone_df, st.session_state.preprocessed_df, temp, humidity)
-        
-        # Process the result dataframe to build formatted results based on individual worker details
-        formatted_results = []
-        for _, row in result_df.iterrows():
-            zone = row['Zone']
-            processed_quantity = row['Processed_Quantity']
-            team_size = row['Team Size']
-            team_etc = row['EstimatedTimeToPickTheQuantity']
-            team_productivity = row['Team Productivity']
-            worker_details = row['WorkerDetails']  # list of dicts with keys: worker_id, Individual ETC, Individual Productivity
+        try:
+            # Use cached data instead of reloading
+            result_df = assign_workers_to_regions(zone_df, st.session_state.preprocessed_df, temp, humidity)
             
-            for detail in worker_details:
-                formatted_results.append({
-                    "Zone": f"Zone {zone}",
-                    "Proposed Team": detail["worker_id"],
-                    "Processed Quantity": processed_quantity,
-                    "Team Size": team_size,
-                    "Individual ETC": detail["Individual ETC"],
-                    "Individual Productivity": format(round(float(str(detail["Individual Productivity"]).replace(" items/hr", ""))), '.0f'),
-                    "Team ETC": team_etc,
-                    "Team Productivity": format(round(float(str(team_productivity).replace(" items/hr", ""))), '.0f')
-                })
-        
-        formatted_df = pd.DataFrame(formatted_results)
-        
-        # Create HTML table with merged cells for zones
-        st.subheader("Worker Assignments")
-        html_table = """
-        <div style="overflow-x: auto;">
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
-            <thead>
-                <tr style="background-color: #4e8cff; color: white;">
-                    <th style="padding: 10px; border: 1px solid #ddd;">Zone</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Proposed Team</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Processed Quantity</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team Size</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Individual ETC</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Individual Productivity (items/hr)</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team ETC</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team Productivity (items/hr)</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-        grouped_df = formatted_df.groupby("Zone")
-        for zone, group in grouped_df:
-            rows = len(group)
-            first_row = True
-            for _, row in group.iterrows():
-                html_table += "<tr style='background-color: " + ("#f0f8ff" if first_row else "#ffffff") + ";'>"
-                if first_row:
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{zone}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Processed Quantity']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Size']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Productivity']}</td>"
-                else:
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
-                html_table += "</tr>"
-                first_row = False
-        
-        html_table += """
-            </tbody>
-        </table>
-        </div>
-        """
-        st.markdown(html_table, unsafe_allow_html=True)
+            # Process the result dataframe to build formatted results based on individual worker details
+            formatted_results = []
+            for _, row in result_df.iterrows():
+                # Check if the expected columns exist in the result_df
+                zone = row.get('Zone')
+                processed_quantity = row.get('Processed_Quantity')
+                team_size = row.get('Team Size')
+                team_etc = row.get('EstimatedTimeToPickTheQuantity')
+                team_productivity = row.get('Team Productivity')
+                worker_details = row.get('WorkerDetails', [])  # Default to empty list if not found
+                
+                for detail in worker_details:
+                    if isinstance(detail, dict):
+                        formatted_results.append({
+                            "Zone": f"Zone {zone}" if zone else "Unknown Zone",
+                            "Proposed Team": detail.get("worker_id", "Unknown"),
+                            "Processed Quantity": processed_quantity if processed_quantity else 0,
+                            "Team Size": team_size if team_size else 0,
+                            "Individual ETC": detail.get("Individual ETC", "N/A"),
+                            "Individual Productivity": format(round(float(str(detail.get("Individual Productivity", "0")).replace(" items/hr", ""))), '.0f'),
+                            "Team ETC": team_etc if team_etc else "N/A",
+                            "Team Productivity": format(round(float(str(team_productivity if team_productivity else "0").replace(" items/hr", ""))), '.0f')
+                        })
+            
+            if formatted_results:
+                formatted_df = pd.DataFrame(formatted_results)
+                
+                # Create HTML table with merged cells for zones
+                st.subheader("Worker Assignments")
+                html_table = """
+                <div style="overflow-x: auto;">
+                <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
+                    <thead>
+                        <tr style="background-color: #4e8cff; color: white;">
+                            <th style="padding: 10px; border: 1px solid #ddd;">Zone</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Proposed Team</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Processed Quantity</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Team Size</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Individual ETC</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Individual Productivity (items/hr)</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Team ETC</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">Team Productivity (items/hr)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                """
+                grouped_df = formatted_df.groupby("Zone")
+                for zone, group in grouped_df:
+                    rows = len(group)
+                    first_row = True
+                    for _, row in group.iterrows():
+                        html_table += "<tr style='background-color: " + ("#f0f8ff" if first_row else "#ffffff") + ";'>"
+                        if first_row:
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{zone}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Processed Quantity']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Size']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team ETC']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Productivity']}</td>"
+                        else:
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
+                            html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
+                        html_table += "</tr>"
+                        first_row = False
+                
+                html_table += """
+                    </tbody>
+                </table>
+                </div>
+                """
+                st.markdown(html_table, unsafe_allow_html=True)
+            else:
+                st.error("No results were returned from the optimization. Please check your inputs.")
+        except Exception as e:
+            st.error(f"An error occurred during processing: {str(e)}")
+            st.error("Please check the column names in your output DataFrame and ensure they match what the UI expects.")
 
 st.markdown("""
 <style>
