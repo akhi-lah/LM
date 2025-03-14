@@ -1,20 +1,42 @@
 import streamlit as st
 import pandas as pd
-from model import load_data, preprocess_data, train_model, load_model, assign_workers_to_regions
+from model import load_data, preprocess_data, load_model, assign_workers_to_regions
 
+# Set up Streamlit UI
 st.set_page_config(page_title="Warehouse Worker Assignment Tool", layout="wide")
 st.title("Warehouse Worker Assignment Optimizer")
 
-# Display Temperature and Humidity sliders side by side with an expanded temperature range
+# Cache the model so it's loaded only once per session
+@st.cache_resource
+def get_model():
+    return load_model()
+
+# Cache the data to avoid reloading it unnecessarily
+@st.cache_data
+def get_data():
+    df = load_data()
+    df, _, _ = preprocess_data(df)
+    return df
+
+# Load model and data
+model = get_model()
+df = get_data()
+
+# Temperature and Humidity Inputs
 cols = st.columns(2)
 with cols[0]:
     temp = st.slider("Temperature (°C)", min_value=-50.0, max_value=45.0, value=20.0, step=0.5)
 with cols[1]:
     humidity = st.slider("Humidity (%)", min_value=20.0, max_value=90.0, value=50.0, step=1.0)
 
-# Zone filter section (placed below the temperature and humidity sliders)
+# Warn if temperature is outside training range
+if temp < df["Temperature"].min() or temp > df["Temperature"].max():
+    st.warning("⚠️ Temperature is outside the training range. Predictions may be inaccurate.")
+
+# Zone Filter Section
 st.subheader("Zone Filter")
 num_zones = st.number_input("Number of Zones", min_value=1, max_value=10, value=3, step=1)
+
 zone_data = []
 zone_cols = st.columns(min(num_zones, 4))
 for i in range(num_zones):
@@ -24,85 +46,34 @@ for i in range(num_zones):
         zone_data.append({"zone": zone, "quantity": quantity})
 zone_df = pd.DataFrame(zone_data)
 
+# Run Optimization
 if st.button("Run Optimization", type="primary"):
     with st.spinner("Processing..."):
-        df = load_data()
-        df, _, _ = preprocess_data(df)
-        train_model(df)  # Ensure model is trained
         result_df = assign_workers_to_regions(zone_df, df, temp, humidity)
-        
-        # Process the result dataframe to build formatted results based on individual worker details
-        formatted_results = []
-        for _, row in result_df.iterrows():
-            zone = row['Zone']
-            processed_quantity = row['Processed_Quantity']
-            team_size = row['Team Size']
-            team_etc = row['EstimatedTimeToPickTheQuantity']
-            team_productivity = row['Team Productivity']
-            worker_details = row['WorkerDetails']  # list of dicts with keys: worker_id, Individual ETC, Individual Productivity
-            
-            for detail in worker_details:
-                formatted_results.append({
-                    "Zone": f"Zone {zone}",
-                    "Proposed Team": detail["worker_id"],
-                    "Processed Quantity": processed_quantity,
-                    "Team Size": team_size,
-                    "Individual ETC": detail["Individual ETC"],
-                    "Individual Productivity": format(round(float(str(detail["Individual Productivity"]).replace(" items/hr", ""))), '.0f'),
-                    "Team ETC": team_etc,
-                    "Team Productivity": format(round(float(str(team_productivity).replace(" items/hr", ""))), '.0f')
-                })
-        
-        formatted_df = pd.DataFrame(formatted_results)
-        
-        # Create HTML table with merged cells for zones
-        st.subheader("Worker Assignments")
-        html_table = """
-        <div style="overflow-x: auto;">
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
-            <thead>
-                <tr style="background-color: #4e8cff; color: white;">
-                    <th style="padding: 10px; border: 1px solid #ddd;">Zone</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Proposed Team</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Processed Quantity</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team Size</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Individual ETC</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Individual Productivity (items/hr)</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team ETC</th>
-                    <th style="padding: 10px; border: 1px solid #ddd;">Team Productivity (items/hr)</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-        grouped_df = formatted_df.groupby("Zone")
-        for zone, group in grouped_df:
-            rows = len(group)
-            first_row = True
-            for _, row in group.iterrows():
-                html_table += "<tr style='background-color: " + ("#f0f8ff" if first_row else "#ffffff") + ";'>"
-                if first_row:
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{zone}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Processed Quantity']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Size']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;' rowspan='{rows}'>{row['Team Productivity']}</td>"
-                else:
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Proposed Team']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual ETC']}</td>"
-                    html_table += f"<td style='padding: 10px; border: 1px solid #ddd;'>{row['Individual Productivity']}</td>"
-                html_table += "</tr>"
-                first_row = False
-        
-        html_table += """
-            </tbody>
-        </table>
-        </div>
-        """
-        st.markdown(html_table, unsafe_allow_html=True)
 
+        # Process the result dataframe
+        formatted_results = [
+            {
+                "Zone": f"Zone {row['Zone']}",
+                "Proposed Team": detail["worker_id"],
+                "Processed Quantity": row['Processed_Quantity'],
+                "Team Size": row['Team Size'],
+                "Individual ETC": detail["Individual ETC"],
+                "Individual Productivity": round(float(str(detail["Individual Productivity"]).replace(" items/hr", ""))),
+                "Team ETC": row['EstimatedTimeToPickTheQuantity'],
+                "Team Productivity": round(float(str(row['Team Productivity']).replace(" items/hr", "")))
+            }
+            for _, row in result_df.iterrows()
+            for detail in row['WorkerDetails']
+        ]
+
+        formatted_df = pd.DataFrame(formatted_results)
+
+        # Display the results as a formatted table
+        st.subheader("Worker Assignments")
+        st.dataframe(formatted_df)
+
+# Style Enhancements
 st.markdown("""
 <style>
     .stApp {
