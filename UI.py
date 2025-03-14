@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from model import load_data, preprocess_data, train_model, load_model, assign_workers_to_regions
+from trail import load_data, preprocess_data, train_model, load_model, assign_workers_to_regions
 
 st.set_page_config(page_title="Warehouse Worker Assignment Tool", layout="wide")
 st.title("Warehouse Worker Assignment Optimizer")
