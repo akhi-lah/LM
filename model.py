@@ -156,7 +156,9 @@ def assign_workers_to_zones(zone_df, worker_df, le, user_inputs):
         features = model_data["features"]
         scaler = model_data["scaler"]
         worker_df["zone_encoded"] = le.transform(worker_df["Zone"])
-       
+        # Filter out workers with fewer than 5 records
+        worker_df = worker_df.groupby("resource").filter(lambda x: len(x) >= 5)
+ 
         # Filter worker pool based on temperature if target_temp is provided
         filtered_worker_df = worker_df
         if target_temp is not None:
@@ -243,3 +245,4 @@ if __name__ == "__main__":
     zone_input = pd.DataFrame({"zone": ["Ambient", "Cold", "Cooler"]})
     result_df = assign_workers_to_zones(zone_input, df, le, user_inputs)
     print(result_df)
+ 
