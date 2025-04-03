@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import ast  # for safe evaluation of string representations
-from model_gpt import load_model, assign_workers_to_zones, preprocess_data, load_data
+from model import load_model, assign_workers_to_zones, preprocess_data, load_data, categorize_temperature
 
 # Set page configuration
 st.set_page_config(page_title="Warehouse Worker Assignment", layout="wide")
@@ -16,8 +16,10 @@ if not os.path.exists(ambient_model_path) or not os.path.exists(cold_cooler_mode
     st.stop()
 
 # Load trained models into session state
-st.session_state.ambient_model = load_model(ambient_model_path)
-st.session_state.cold_cooler_model = load_model(cold_cooler_model_path)
+if 'ambient_model' not in st.session_state:
+    st.session_state.ambient_model = load_model(ambient_model_path)
+if 'cold_cooler_model' not in st.session_state:
+    st.session_state.cold_cooler_model = load_model(cold_cooler_model_path)
 
 st.sidebar.title("Warehouse Worker Assignment")
 
@@ -25,9 +27,20 @@ st.sidebar.title("Warehouse Worker Assignment")
 df = load_data()
 df, le = preprocess_data(df)
 
+# Show temperature distribution if Room_Temp column exists
+if 'Room_Temp' in df.columns:
+    # Calculate temperature ranges for display
+    temp_ranges = {
+        'Cold': df[df['Room_Temp'] < 0]['Room_Temp'].describe(),
+        'Cool': df[(df['Room_Temp'] >= 0) & (df['Room_Temp'] <= 10)]['Room_Temp'].describe(),
+        'Ambient': df[df['Room_Temp'] > 10]['Room_Temp'].describe()
+    }
+
 # Input fields for user parameters
 st.sidebar.subheader("Input Warehouse Parameters")
 ambient_temp = st.sidebar.number_input("Ambient Temperature (°C)", min_value=-10, max_value=50, value=15)
+st.sidebar.write(f"Temperature Category: {categorize_temperature(ambient_temp)}")
+
 ambient_humidity = st.sidebar.number_input("Ambient Humidity (%)", min_value=0, max_value=100, value=60)
 ambient_qty = st.sidebar.number_input("Quantity to Pick (Ambient)", min_value=1, value=500)
 cold_qty = st.sidebar.number_input("Quantity to Pick (Cold)", min_value=1, value=800)
@@ -52,6 +65,57 @@ if st.sidebar.button("Assign Workers"):
         st.session_state["result_df"] = result_df  # store result for later use in simulation
     st.success("Worker assignment completed successfully!")
 
+# Display zone temperature definitions
+st.subheader("Temperature Zone Definitions")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("""
+    <div style='background-color: #d9edf7; border: 2px solid #31708f; border-radius: 10px; padding: 10px;'>
+        <h3 style='text-align: center; color: #31708f;'>Cold Zone</h3>
+        <p>Temperature: < 0°C</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown("""
+    <div style='background-color: #dff0d8; border: 2px solid #3c763d; border-radius: 10px; padding: 10px;'>
+        <h3 style='text-align: center; color: #3c763d;'>Cool Zone</h3>
+        <p>Temperature: 0°C to 10°C</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col3:
+    st.markdown("""
+    <div style='background-color: #fcf8e3; border: 2px solid #8a6d3b; border-radius: 10px; padding: 10px;'>
+        <h3 style='text-align: center; color: #8a6d3b;'>Ambient Zone</h3>
+        <p>Temperature: > 10°C</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# If Room_Temp exists, display temperature stats
+if 'Room_Temp' in df.columns:
+    #st.subheader("Temperature Distribution in Dataset")
+    temp_stats_cols = st.columns(3)
+    
+    # with temp_stats_cols[0]:
+    #     cold_count = len(df[df['Room_Temp'] < 0])
+    #     st.metric("Cold Zone Workers", cold_count)
+    #     if 'Cold' in temp_ranges and not temp_ranges['Cold'].empty:
+    #         st.write(f"Min: {temp_ranges['Cold']['min']:.1f}°C, Max: {temp_ranges['Cold']['max']:.1f}°C")
+    
+    # with temp_stats_cols[1]:
+    #     cool_count = len(df[(df['Room_Temp'] >= 0) & (df['Room_Temp'] <= 10)])
+    #     st.metric("Cool Zone Workers", cool_count)
+    #     if 'Cool' in temp_ranges and not temp_ranges['Cool'].empty:
+    #         st.write(f"Min: {temp_ranges['Cool']['min']:.1f}°C, Max: {temp_ranges['Cool']['max']:.1f}°C")
+    
+    # with temp_stats_cols[2]:
+    #     ambient_count = len(df[df['Room_Temp'] > 10])
+    #     st.metric("Ambient Zone Workers", ambient_count)
+    #     if 'Ambient' in temp_ranges and not temp_ranges['Ambient'].empty:
+    #         st.write(f"Min: {temp_ranges['Ambient']['min']:.1f}°C, Max: {temp_ranges['Ambient']['max']:.1f}°C")
+
 # If assignment results are available, display the table and simulation section.
 if "result_df" in st.session_state:
     result_df = st.session_state.result_df
@@ -60,13 +124,15 @@ if "result_df" in st.session_state:
         total_workers = df["RESOURCE"].astype(str).str.strip().nunique()
     elif "worker_id" in df.columns:
         total_workers = df["worker_id"].astype(str).str.strip().nunique()
+    elif "resource" in df.columns:  # Add this case
+        total_workers = df["resource"].astype(str).str.strip().nunique()
     else:
-    # If there's some other worker identifier column, use that
+        # If there's some other worker identifier column, use that
         worker_id_col = [col for col in df.columns if 'worker' in col.lower() or 'resource' in col.lower()]
-    if worker_id_col:
-        total_workers = df[worker_id_col[0]].astype(str).str.strip().nunique()
-    else:
-        total_workers = 30  # Fallback to your known count
+        if worker_id_col:
+            total_workers = df[worker_id_col[0]].astype(str).str.strip().nunique()
+        else:
+            total_workers = 30  # Fallback to your known count
     
     # Calculate assigned workers from the assignment result.
     assigned_workers_set = set()
@@ -115,6 +181,9 @@ if "result_df" in st.session_state:
             team_productivity = team_productivity
 
         worker_details = row.get('WorkerDetails', [])
+        if isinstance(worker_details, str):
+            worker_details = ast.literal_eval(worker_details)
+            
         for detail in worker_details:
             if isinstance(detail, dict):
                 # Process and round individual productivity
@@ -138,7 +207,6 @@ if "result_df" in st.session_state:
     
     if formatted_results:
         formatted_df = pd.DataFrame(formatted_results)
-        #st.subheader("Worker Assignments")
         html_table = """
         <div style="overflow-x: auto;">
         <table style="width:100%; border-collapse: collapse; margin-top: 20px;">
