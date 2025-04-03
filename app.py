@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import ast  # for safe evaluation of string representations
-from model_gpt import load_model, assign_workers_to_zones, preprocess_data, load_data
+from model import load_model, assign_workers_to_zones, preprocess_data, load_data
 
 # Set page configuration
 st.set_page_config(page_title="Warehouse Worker Assignment", layout="wide")
